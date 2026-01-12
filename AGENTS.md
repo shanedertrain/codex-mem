@@ -4,3 +4,4 @@
 - Run `ruff format` + `ruff check` and `pytest` under `codex-mem/` before wrapping up changes here.
 - Keep MCP/CLI interfaces stable: `mem.recall`, `mem.search`, `mem.add`, `mem.update`, `mem.forget`, `mem.stats`.
 - Respect the allow/deny globs and redaction patterns—never log or spool secrets.
+- When used inside client repos, the expected flow is: warm code context (tldr), then call `mem.recall` at task start; keep this package tool-agnostic and portable.
