@@ -1,0 +1,6 @@
+- This directory is a standalone, portable package (`codex-mem`); keep it free of AllRentz business logic.
+- Use Python 3.12+; install locally with `python -m pip install -e ./codex-mem[dev]`.
+- Default to rule-based extraction; remote/embedding features are optional and must stay opt-in (CODEX_MEM_REMOTE=1).
+- Run `ruff format` + `ruff check` and `pytest` under `codex-mem/` before wrapping up changes here.
+- Keep MCP/CLI interfaces stable: `mem.recall`, `mem.search`, `mem.add`, `mem.update`, `mem.forget`, `mem.stats`.
+- Respect the allow/deny globs and redaction patterns—never log or spool secrets.

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codex-mem"
+version = "0.1.0"
+description = "Persistent local memory layer for Codex (notify ingest + MCP recall)"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "All Rentz" }
+]
+dependencies = [
+  "typer>=0.12",
+  "pydantic>=2.6",
+  "fastmcp>=0.3.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.6",
+  "mypy>=1.11",
+]
+
+[project.scripts]
+codex-mem = "codex_mem.cli:app"
+codex-mem-serve = "codex_mem.mcp_server:run"
+codex-mem-notify = "codex_mem.notify:main"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["docs"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "N",
+  "W",
+]
