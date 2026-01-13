@@ -23,6 +23,14 @@ def mem_base_dir() -> Path:
     return codex_home() / "mem"
 
 
+def mcp_base_dir() -> Path:
+    """Base directory for MCP artifacts."""
+    override = getenv_path("CODEX_MCP_HOME")
+    if override is not None:
+        return override
+    return codex_home() / "mcp"
+
+
 def db_path() -> Path:
     return mem_base_dir() / "mem.sqlite3"
 
@@ -31,12 +39,22 @@ def log_path() -> Path:
     return mem_base_dir() / "notify.log"
 
 
+def mcp_log_path() -> Path:
+    return mcp_base_dir() / "codex-mem.log"
+
+
 def spool_path() -> Path:
     return mem_base_dir() / "notify_spool.jsonl"
 
 
 def ensure_base_dir() -> Path:
     base = mem_base_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def ensure_mcp_dir() -> Path:
+    base = mcp_base_dir()
     base.mkdir(parents=True, exist_ok=True)
     return base
 

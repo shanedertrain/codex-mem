@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+import logging
+import sys
+import time
+from importlib import metadata
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Iterable, Sequence
 
 from fastmcp.exceptions import ToolError  # type: ignore
 from fastmcp.server import FastMCP  # type: ignore
 
-from codex_mem.config import Settings
+from codex_mem.config import Settings, log_level_from_env
 from codex_mem.models import MemoryCandidate, MemoryKind
-from codex_mem.paths import detect_project_root
+from codex_mem.paths import detect_project_root, ensure_mcp_dir, mcp_log_path
 from codex_mem.store import Store
 
 mcp = FastMCP("codex-mem")
 _store: Store | None = None
 _settings: Settings | None = None
+logger = logging.getLogger("codex_mem.mcp_server")
+_logging_configured = False
+_log_file: Path | None = None
+_configured_handlers: list[logging.Handler] = []
 
 
 def _get_store() -> tuple[Store, Settings]:
@@ -22,6 +31,74 @@ def _get_store() -> tuple[Store, Settings]:
         _settings = Settings.from_env()
         _store = Store(_settings)
     return _store, _settings
+
+
+def _clear_configured_handlers() -> None:
+    """Remove handlers we attached to the root logger."""
+    global _configured_handlers
+    root_logger = logging.getLogger()
+    for handler in _configured_handlers:
+        root_logger.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
+    _configured_handlers = []
+
+
+def setup_logging(force: bool = False) -> Path | None:
+    """Configure console + rotating file logging with UTC timestamps."""
+    global _logging_configured, _log_file
+    if _logging_configured and not force:
+        return _log_file
+
+    if force:
+        _clear_configured_handlers()
+        _logging_configured = False
+        _log_file = None
+
+    log_level = log_level_from_env()
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    logger.setLevel(log_level)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    formatter.converter = time.gmtime
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(log_level)
+    stream_handler.setFormatter(formatter)
+    root_logger.addHandler(stream_handler)
+    _configured_handlers.append(stream_handler)
+
+    log_path = mcp_log_path()
+    try:
+        ensure_mcp_dir()
+        file_handler = RotatingFileHandler(
+            log_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+        _configured_handlers.append(file_handler)
+        _log_file = log_path
+    except Exception as exc:
+        _log_file = None
+        logger.warning(
+            "Failed to set up file logging at %s: %s; continuing with console only",
+            log_path,
+            exc,
+        )
+
+    _logging_configured = True
+    return _log_file
+
+
+def _reset_logging_for_tests() -> None:
+    """Reset logging state so tests can reconfigure cleanly."""
+    global _logging_configured, _log_file
+    _clear_configured_handlers()
+    _logging_configured = False
+    _log_file = None
 
 
 def _parse_kinds(kinds: Sequence[str] | None) -> list[MemoryKind] | None:
@@ -51,6 +128,13 @@ def _format_context_pack(rows: Iterable[dict]) -> str:
             prefix = "[pinned]" if item["is_pinned"] else ""
             lines.append(f"- {prefix}[id:{item['id']}] {item['text']}")
     return "\n".join(lines)
+
+
+def _package_version() -> str:
+    try:
+        return metadata.version("codex-mem")
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
 
 def mem_recall(
@@ -150,10 +234,36 @@ def mem_stats() -> dict:
     return store.stats()
 
 
-def run() -> None:
-    _get_store()
-    _register_tools()
-    mcp.run()
+def run(transport: str = "stdio") -> None:
+    log_file = setup_logging(force=True)
+    store = None
+    try:
+        store, settings = _get_store()
+        _register_tools()
+        logger.info(
+            "codex-mem starting transport=%s level=%s log_file=%s cwd=%s version=%s "
+            "host=%s port=%s remote_enabled=%s spool_enabled=%s",
+            transport,
+            logging.getLevelName(logging.getLogger().level),
+            log_file or "stdout-only",
+            Path.cwd(),
+            _package_version(),
+            mcp.settings.host,
+            mcp.settings.port,
+            settings.remote_enabled,
+            settings.spool_enabled,
+        )
+        mcp.run(transport=transport)
+    except Exception:
+        logger.exception("codex-mem encountered a fatal error")
+        raise
+    finally:
+        global _store, _settings
+        if store:
+            store.close()
+        _store = None
+        _settings = None
+        logger.info("codex-mem stopping")
 
 
 def _register_tools() -> None:

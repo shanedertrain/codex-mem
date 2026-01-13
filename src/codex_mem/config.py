@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import List
 
@@ -76,3 +77,19 @@ def _parse_float(value: str | None, default: float) -> float:
         return float(value)
     except ValueError:
         return default
+
+
+def log_level_from_env(default: int = logging.INFO) -> int:
+    level_name = os.environ.get("CODEX_MEM_LOG_LEVEL")
+    if level_name is None or level_name.strip() == "":
+        return default
+
+    level_value = level_name.strip()
+    if level_value.isdigit():
+        try:
+            return int(level_value)
+        except ValueError:
+            return default
+
+    resolved = logging.getLevelName(level_value.upper())
+    return resolved if isinstance(resolved, int) else default
