@@ -64,7 +64,7 @@ def setup_logging(force: bool = False) -> Path | None:
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
     formatter.converter = time.gmtime
 
-    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler = logging.StreamHandler(sys.stderr)
     stream_handler.setLevel(log_level)
     stream_handler.setFormatter(formatter)
     root_logger.addHandler(stream_handler)
