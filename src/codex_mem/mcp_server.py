@@ -101,6 +101,40 @@ def _reset_logging_for_tests() -> None:
     _log_file = None
 
 
+def _handler_is_closed(handler: logging.Handler) -> bool:
+    stream = getattr(handler, "stream", None)
+    if stream is not None:
+        return bool(getattr(stream, "closed", False))
+    console = getattr(handler, "console", None)
+    if console is not None:
+        file = getattr(console, "file", None)
+        return bool(getattr(file, "closed", False))
+    return False
+
+
+def _prune_closed_handlers() -> None:
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        if _handler_is_closed(handler):
+            root_logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
+
+
+def _wants_help(argv: Sequence[str]) -> bool:
+    return any(arg in {"-h", "--help"} for arg in argv)
+
+
+def _print_help() -> None:
+    sys.stdout.write(
+        "codex-mem-serve runs the codex-mem MCP server over stdio.\n"
+        "Usage: codex-mem-serve\n"
+        "Other commands: codex-mem --help\n"
+    )
+
+
 def _parse_kinds(kinds: Sequence[str] | None) -> list[MemoryKind] | None:
     if not kinds:
         return None
@@ -128,6 +162,13 @@ def _format_context_pack(rows: Iterable[dict]) -> str:
             prefix = "[pinned]" if item["is_pinned"] else ""
             lines.append(f"- {prefix}[id:{item['id']}] {item['text']}")
     return "\n".join(lines)
+
+
+def _stdio_closed() -> bool:
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and getattr(stream, "closed", False):
+            return True
+    return False
 
 
 def _package_version() -> str:
@@ -235,6 +276,9 @@ def mem_stats() -> dict:
 
 
 def run(transport: str = "stdio") -> None:
+    if _wants_help(sys.argv[1:]):
+        _print_help()
+        return
     log_file = setup_logging(force=True)
     store = None
     try:
@@ -263,7 +307,15 @@ def run(transport: str = "stdio") -> None:
             store.close()
         _store = None
         _settings = None
-        logger.info("codex-mem stopping")
+        # stdio transport can close streams before shutdown logging runs.
+        _prune_closed_handlers()
+        if transport != "stdio" or not _stdio_closed():
+            prev_raise = logging.raiseExceptions
+            logging.raiseExceptions = False
+            try:
+                logger.info("codex-mem stopping")
+            finally:
+                logging.raiseExceptions = prev_raise
 
 
 def _register_tools() -> None:
